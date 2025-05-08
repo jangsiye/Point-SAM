@@ -27,7 +27,8 @@ def worker_init_fn(worker_id: int, rank: int = 0):
 
 def replace_with_fused_layernorm(module: nn.Module):
     # https://github.com/huggingface/pytorch-image-models/pull/1674/files
-    from apex.normalization import FusedLayerNorm
+    # from apex.normalization import FusedLayerNorm
+    FusedLayerNorm = torch.nn.LayerNorm
 
     for name, child in module.named_children():
         if isinstance(child, nn.LayerNorm):
