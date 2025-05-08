@@ -65,7 +65,7 @@ model.apply(replace_with_fused_layernorm)
 # Load pre-trained model
 # ---------------------------------------------------------------------------- #
 load_model(model, args.ckpt_path)
-sam = model
+sam = model.cuda()
 
 
 @app.route("/")
@@ -174,9 +174,44 @@ def save():
     return jsonify({"status": "saved"})
 
 
+# @app.route("/segment", methods=["POST"])
+# def segment():
+#     request_data = request.get_json()
+#     prompt_point = request_data["prompt_point"]
+#     prompt_label = request_data["prompt_label"]
+
+#     # append prompt
+#     global prompts, labels, prompt_mask
+#     prompts.append(prompt_point)
+#     labels.append(prompt_label)
+
+#     prompt_points = torch.from_numpy(np.array(prompts)).cuda().float()[None, ...]
+#     prompt_labels = torch.from_numpy(np.array(labels)).cuda()[None, ...]
+
+#     data = {
+#         "points": pc_xyz,
+#         "rgb": pc_rgb,
+#         "prompt_points": prompt_points,
+#         "prompt_labels": prompt_labels,
+#         "prompt_mask": prompt_mask,
+#     }
+#     with torch.no_grad():
+#         # sam.set_pointcloud(pc_xyz, pc_rgb)
+#         mask, scores, logits = sam.predict_masks(
+#             prompt_points, prompt_labels, prompt_mask, prompt_mask is None
+#         )
+#         print("*** mask", mask)
+#         print("*** scores", scores)
+#         print("*** logits", logits)
+#     prompt_mask = logits[0][torch.argmax(scores[0])][None, ...]
+#     global segment_mask
+#     segment_mask = return_mask = mask[0][torch.argmax(scores[0])] > 0
+#     return jsonify({"seg": return_mask.cpu().numpy().tolist()})
+
 @app.route("/segment", methods=["POST"])
 def segment():
     request_data = request.get_json()
+    print(request_data['prompt_point'],request_data['prompt_label'])
     prompt_point = request_data["prompt_point"]
     prompt_label = request_data["prompt_label"]
 
@@ -196,15 +231,30 @@ def segment():
         "prompt_mask": prompt_mask,
     }
     with torch.no_grad():
-        sam.set_pointcloud(pc_xyz, pc_rgb)
-        mask, scores, logits = sam.predict_masks(
-            prompt_points, prompt_labels, prompt_mask, prompt_mask is None
-        )
-    prompt_mask = logits[0][torch.argmax(scores[0])][None, ...]
-    global segment_mask
-    segment_mask = return_mask = mask[0][torch.argmax(scores[0])] > 0
-    return jsonify({"seg": return_mask.cpu().numpy().tolist()})
+        # sam.set_pointcloud(pc_xyz, pc_rgb)
+        # mask, scores, logits = sam.predict_masks(
+        #     prompt_points, prompt_labels, prompt_mask, prompt_mask is None
+        # )
 
+        mask, scores = sam.predict_masks(
+            pc_xyz,
+            pc_rgb,
+            prompt_points.cuda(), 
+            prompt_labels.cuda(),
+            multimask_output=True
+        )
+
+    global segment_mask, masks
+
+    # 만약 masks가 리스트가 아니면 초기화
+    if not isinstance(masks, list):
+        masks = []
+
+    segment_mask = return_mask = mask[0][1] > 0
+    # segment_mask = return_mask = mask[0][0] > 0
+    masks.append(segment_mask.cpu().numpy())
+
+    return jsonify({"seg": return_mask.cpu().numpy().tolist()})
 
 if __name__ == "__main__":
     app.run(host=f"{args.host}", port=f"{args.port}", debug=True)
